@@ -91,6 +91,7 @@ def normalize_stock_code(stock_code: str) -> str:
     - '005930.KS'   -> '005930.KS' (keep Korea Yahoo suffix form)
     - '2330.TW'     -> '2330.TW'  (keep Taiwan TWSE Yahoo suffix form)
     - '6505.TWO'    -> '6505.TWO' (keep Taiwan TPEx Yahoo suffix form)
+    - 'RELIANCE.NS' -> 'RELIANCE.NS' (keep India NSE Yahoo suffix form)
     - 'AAPL'        -> 'AAPL'     (keep US stock ticker as-is)
 
     This function is applied at the DataProviderManager layer so that
@@ -139,6 +140,8 @@ def normalize_stock_code(stock_code: str) -> str:
         if suffix.upper() in ('KS', 'KQ') and base.isdigit() and len(base) == 6:
             return f"{base}.{suffix.upper()}"
         if suffix.upper() in ('TW', 'TWO') and base.isdigit() and 4 <= len(base) <= 6:
+            return f"{base}.{suffix.upper()}"
+        if suffix.upper() == 'NS' and base.isalpha() and len(base) >= 2:
             return f"{base}.{suffix.upper()}"
         if suffix.upper() == 'HK' and base.isdigit() and 1 <= len(base) <= 5:
             return f"HK{base.zfill(5)}"
@@ -201,6 +204,15 @@ def _is_tw_market(code: str) -> bool:
     return is_suffix_market_symbol(code, "tw")
 
 
+def _is_in_market(code: str) -> bool:
+    """判定是否为印度 NSE Yahoo Finance suffix 代码（如 RELIANCE.NS / TCS.NS）。
+
+    NSE base 为字母 ticker（RELIANCE、HDFCBANK、LT 等），仅带 .NS 后缀的
+    代码识别为印度股，避免与美股字母 ticker 或 A 股数字码撞码。
+    """
+    return is_suffix_market_symbol(code, "in")
+
+
 def _is_etf_code(code: str) -> bool:
     """判定 A 股 ETF 基金代码（保守规则）。"""
     normalized = normalize_stock_code(code)
@@ -241,7 +253,9 @@ def _is_meaningful_chip_distribution(chip: Any) -> bool:
 
 
 def _market_tag(code: str) -> str:
-    """返回市场标签: cn/us/hk/jp/kr/tw."""
+    """返回市场标签: cn/us/hk/jp/kr/tw/in."""
+    if _is_in_market(code):
+        return "in"
     if _is_us_market(code):
         return "us"
     if _is_hk_market(code):
@@ -624,7 +638,7 @@ class DataFetcherManager:
         "TickFlowFetcher": {"cn"},
         "PytdxFetcher": {"cn"},
         "BaostockFetcher": {"cn"},
-        "YfinanceFetcher": {"cn", "hk", "us", "jp", "kr", "tw"},
+        "YfinanceFetcher": {"cn", "hk", "us", "jp", "kr", "tw", "in"},
         "LongbridgeFetcher": {"hk", "us"},
         "FutuFetcher": {"hk"},
         "FinnhubFetcher": {"us"},
@@ -1938,14 +1952,15 @@ class DataFetcherManager:
         is_jp = (not is_us) and (not is_hk) and _is_jp_market(stock_code)
         is_kr = (not is_us) and (not is_hk) and _is_kr_market(stock_code)
         is_tw = (not is_us) and (not is_hk) and _is_tw_market(stock_code)
-        market = "us" if is_us else "hk" if is_hk else "jp" if is_jp else "kr" if is_kr else "tw" if is_tw else "cn"
+        is_in = (not is_us) and (not is_hk) and _is_in_market(stock_code)
+        market = "us" if is_us else "hk" if is_hk else "jp" if is_jp else "kr" if is_kr else "tw" if is_tw else "in" if is_in else "cn"
         if market != "cn":
             fetchers = self._filter_daily_fetchers_for_market(fetchers, market)
         fetchers = self._filter_fetchers_by_capability(fetchers, capability="daily_data")
         total_fetchers = len(fetchers)
 
         if total_fetchers == 0:
-            market_label = "美股指数" if is_us_index else "美股" if is_us else "港股" if is_hk else "台股" if is_tw else "A股"
+            market_label = "美股指数" if is_us_index else "美股" if is_us else "港股" if is_hk else "台股" if is_tw else "印度" if is_in else "A股"
             error_summary = f"{market_label} {stock_code} 获取失败:\n暂无可用数据源"
             logger.error(f"[数据源终止] {stock_code} 获取失败: {error_summary}")
             raise DataFetchError(error_summary)
@@ -2441,9 +2456,10 @@ class DataFetcherManager:
         is_jp = (not is_us) and (not is_hk) and _is_jp_market(stock_code)
         is_kr = (not is_us) and (not is_hk) and _is_kr_market(stock_code)
         is_tw = (not is_us) and (not is_hk) and _is_tw_market(stock_code)
+        is_in = (not is_us) and (not is_hk) and _is_in_market(stock_code)
 
-        if is_jp or is_kr or is_tw:
-            market_label = "日股" if is_jp else "韩股" if is_kr else "台股"
+        if is_jp or is_kr or is_tw or is_in:
+            market_label = "日股" if is_jp else "韩股" if is_kr else "台股" if is_tw else "印度"
             quote = self._try_fetcher_quote(stock_code, "YfinanceFetcher")
             if quote is not None:
                 logger.info(f"[实时行情] {market_label} {stock_code} 成功获取 (来源: YfinanceFetcher)")

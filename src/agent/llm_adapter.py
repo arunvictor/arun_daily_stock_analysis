@@ -283,6 +283,13 @@ def _get_opt_in_payload(model: str, opt_in: Dict[str, dict]) -> Optional[dict]:
 def get_thinking_extra_body(model: str) -> Optional[dict]:
     """Return extra_body for thinking mode, or None.
 
+    ``model`` may be the full LiteLLM model (e.g. ``ollama/qwen3:4b``) or a
+    short model name. When a provider prefix is present it is used to scope
+    provider-specific behavior.
+
+    - Ollama reasoning models (_OLLAMA_THINK_OFF_MODELS: qwen3): Return
+      ``{"think": False}`` to disable Ollama's default thinking pass, which
+      avoids the large latency penalty of reasoning on local models.
     - Auto-thinking models (_AUTO_THINKING_MODELS: deepseek-reasoner, deepseek-r1, qwq):
       These models automatically return reasoning_content in API responses; sending
       extra_body would cause 400 because the API already enables thinking by default.
@@ -291,9 +298,32 @@ def get_thinking_extra_body(model: str) -> Optional[dict]:
       payload to explicitly enable thinking mode.
     - All other models: Return None (no thinking mode).
     """
-    if _model_matches(model, _AUTO_THINKING_MODELS):
+    provider, model_short = _split_model_provider(model)
+    if provider == "ollama" and _is_ollama_qwen3_model(model_short):
+        return {"think": False}
+    if _model_matches(model_short, _AUTO_THINKING_MODELS):
         return None
-    return _get_opt_in_payload(model, _OPT_IN_THINKING_MODELS)
+    return _get_opt_in_payload(model_short, _OPT_IN_THINKING_MODELS)
+
+
+def _split_model_provider(model: str) -> Tuple[str, str]:
+    """Split a LiteLLM model into (provider, model_name) without a provider default."""
+    if not model:
+        return "", ""
+    if "/" in model:
+        provider, _, short = model.partition("/")
+        return provider.lower().strip(), short.strip()
+    return "", model.strip()
+
+
+def _is_ollama_qwen3_model(model_short: str) -> bool:
+    """Return whether a model name belongs to the Ollama Qwen3 reasoning family.
+
+    Handles version tags such as ``qwen3``, ``qwen3:4b`` and ``qwen3-coder``.
+    """
+    m = (model_short or "").lower().strip()
+    base = m.split(":")[0]
+    return bool(base) and (base == "qwen3" or base.startswith("qwen3-") or base.startswith("qwen3:"))
 
 
 def resolve_fallback_litellm_wire_models(
@@ -688,9 +718,8 @@ class LLMToolAdapter:
         """Call a specific litellm model with OpenAI-format messages and tools."""
         openai_messages = self._convert_messages(messages, target_model=model)
 
-        # Use short model name (without provider prefix) for thinking model lookup
-        model_short = model.split("/")[-1] if "/" in model else model
-        extra = get_thinking_extra_body(model_short)
+        # Use the full model name (provider prefix included) for thinking model lookup
+        extra = get_thinking_extra_body(model)
 
         call_kwargs: Dict[str, Any] = {
             "model": model,

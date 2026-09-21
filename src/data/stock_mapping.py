@@ -107,6 +107,17 @@ STOCK_NAME_MAP = {
     "01299": "友邦保险",
     "00941": "中国移动",
     "00883": "中国海洋石油",
+    # === India NSE stocks (Yahoo `.NS` suffix) ===
+    "RELIANCE.NS": "信实工业",
+    "TCS.NS": "塔塔咨询",
+    "INFY.NS": "印孚瑟斯",
+    "HDFCBANK.NS": "HDFC银行",
+    "ICICIBANK.NS": "ICICI银行",
+    "SBIN.NS": "印度国家银行",
+    "BHARTIARTL.NS": "巴帝电信",
+    "LT.NS": "拉森特博洛",
+    "SUNPHARMA.NS": "太阳制药",
+    "ITC.NS": "ITC",
 }
 
 
@@ -173,6 +184,17 @@ STOCK_ENGLISH_NAME_MAP: Dict[str, Tuple[str, ...]] = {
     "01299": ("AIA Group", "AIA"),
     "00941": ("China Mobile",),
     "00883": ("CNOOC",),
+    # === India NSE stocks (Yahoo `.NS` suffix) ===
+    "RELIANCE.NS": ("Reliance Industries Limited", "Reliance"),
+    "TCS.NS": ("Tata Consultancy Services Limited", "TCS"),
+    "INFY.NS": ("Infosys Limited", "Infosys"),
+    "HDFCBANK.NS": ("HDFC Bank Limited", "HDFC Bank"),
+    "ICICIBANK.NS": ("ICICI Bank Limited", "ICICI Bank"),
+    "SBIN.NS": ("State Bank of India", "State Bank of India"),
+    "BHARTIARTL.NS": ("Bharti Airtel Limited", "Bharti Airtel"),
+    "LT.NS": ("Larsen & Toubro Limited", "Larsen & Toubro"),
+    "SUNPHARMA.NS": ("Sun Pharmaceutical Industries Limited", "Sun Pharma"),
+    "ITC.NS": ("ITC Limited", "ITC"),
 }
 
 

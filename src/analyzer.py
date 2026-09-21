@@ -3379,8 +3379,7 @@ class GeminiAnalyzer:
                         config,
                     )
 
-                model_short = model.split("/")[-1] if "/" in model else model
-                extra = get_thinking_extra_body(model_short)
+                extra = get_thinking_extra_body(model)
                 call_kwargs: Dict[str, Any] = {
                     "model": model,
                     "messages": [

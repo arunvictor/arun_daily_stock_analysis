@@ -8,6 +8,7 @@ without introducing import cycles.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -19,6 +20,10 @@ class SuffixMarketSpec:
     market: str
     suffixes: tuple[str, ...]
     digit_lengths: tuple[int, ...]
+    # NSE (India) tickers use alphabetic bases (``RELIANCE.NS``) rather than the
+    # numeric bases of JP/KR/TW. When True, ``get_suffix_market`` accepts any
+    # 2+ letter alphabetic base instead of requiring digit_lengths.
+    alpha_base: bool = False
 
 
 _SUFFIX_MARKET_SPECS: tuple[SuffixMarketSpec, ...] = (
@@ -27,6 +32,9 @@ _SUFFIX_MARKET_SPECS: tuple[SuffixMarketSpec, ...] = (
     # Taiwan support mirrors the same suffix-only pattern; keep it here so the
     # shared helpers stay complete for all yfinance-only offshore markets.
     SuffixMarketSpec("tw", ("TW", "TWO"), (4, 5, 6)),
+    # India NSE support (RELIANCE.NS, TCS.NS, ...). NSE bases are alphabetic
+    # tickers, so this spec opts into the alphabetic-base branch below.
+    SuffixMarketSpec("in", ("NS",), (), alpha_base=True),
 )
 
 _MARKET_TO_SPEC = {spec.market: spec for spec in _SUFFIX_MARKET_SPECS}
@@ -50,7 +58,7 @@ def split_suffix_symbol(stock_code: str) -> tuple[str, str] | None:
 
 
 def get_suffix_market(stock_code: str) -> Optional[str]:
-    """Return jp/kr/tw for supported suffix-only Yahoo symbols, else None."""
+    """Return jp/kr/tw/in for supported suffix-only Yahoo symbols, else None."""
 
     parts = split_suffix_symbol(stock_code)
     if parts is None:
@@ -58,6 +66,10 @@ def get_suffix_market(stock_code: str) -> Optional[str]:
     base, suffix = parts
     spec = _SUFFIX_TO_SPEC.get(suffix)
     if spec is None:
+        return None
+    if spec.alpha_base:
+        if re.fullmatch(r"[A-Z]{2,}", base):
+            return spec.market
         return None
     if not (base.isdigit() and len(base) in spec.digit_lengths):
         return None
@@ -85,6 +97,10 @@ def is_tw_suffix_symbol(stock_code: str) -> bool:
     return is_suffix_market_symbol(stock_code, "tw")
 
 
+def is_in_suffix_symbol(stock_code: str) -> bool:
+    return is_suffix_market_symbol(stock_code, "in")
+
+
 def normalize_suffix_market_symbol(stock_code: str) -> Optional[str]:
     """Normalize supported suffix-only symbols to upper-case Yahoo form."""
 
@@ -102,7 +118,8 @@ def suffix_base_lookup_allowed(canonical_code: str) -> bool:
 
     JP/KR intentionally allow stock-index-backed bare-code lookup to support the
     existing MVP behavior. TW remains strict suffix-only for now because its
-    follow-up index work is not part of this issue.
+    follow-up index work is not part of this issue. IN is also strict suffix-only
+    (alphabetic NSE bases would otherwise collide with US tickers).
     """
 
     return get_suffix_market(canonical_code) in {"jp", "kr"}

@@ -94,6 +94,15 @@ class YfinanceFetcher(BaseFetcher):
         """
         return is_suffix_market_symbol(stock_code, "tw")
 
+    @staticmethod
+    def _is_in_suffix_stock(stock_code: str) -> bool:
+        """Return True for supported India NSE suffix-only Yahoo symbols (`.NS`).
+
+        NSE bases are alphabetic tickers (``RELIANCE`` / ``HDFCBANK`` / ``LT``),
+        unlike the numeric bases of JP/KR/TW.
+        """
+        return is_suffix_market_symbol(stock_code, "in")
+
     def _convert_stock_code(self, stock_code: str) -> str:
         """
         转换股票代码为 Yahoo Finance 格式
@@ -131,9 +140,13 @@ class YfinanceFetcher(BaseFetcher):
             logger.debug(f"识别为美股代码: {code}")
             return code
 
-        # 日股/韩股/台股 MVP：显式 Yahoo Finance suffix-only 代码，原样传给 Yahoo。
-        if self._is_jp_kr_suffix_stock(code) or self._is_tw_suffix_stock(code):
-            logger.debug(f"识别为日韩台 Yahoo suffix 代码: {code}")
+        # 日股/韩股/台股/印度 NSE MVP：显式 Yahoo Finance suffix-only 代码，原样传给 Yahoo。
+        if (
+            self._is_jp_kr_suffix_stock(code)
+            or self._is_tw_suffix_stock(code)
+            or self._is_in_suffix_stock(code)
+        ):
+            logger.debug(f"识别为日韩台/印度 Yahoo suffix 代码: {code}")
             return code
 
         # 港股：hk前缀 -> .HK后缀
@@ -350,10 +363,10 @@ class YfinanceFetcher(BaseFetcher):
 
     def get_main_indices(self, region: str = "cn") -> Optional[List[Dict[str, Any]]]:
         """
-        获取主要指数行情 (Yahoo Finance)，支持 A 股、美股、港股、日股、韩股与台股。
+        获取主要指数行情 (Yahoo Finance)，支持 A 股、美股、港股、日股、韩股、台股与印度。
         region=us 时委托给 _get_us_main_indices。
         region=hk 时委托给 _get_hk_main_indices。
-        region=jp/kr/tw 时分别委托给对应市场指数方法。
+        region=jp/kr/tw/in 时分别委托给对应市场指数方法。
         """
         import yfinance as yf
 
@@ -367,6 +380,8 @@ class YfinanceFetcher(BaseFetcher):
             return self._get_kr_main_indices(yf)
         if region == "tw":
             return self._get_tw_main_indices(yf)
+        if region == "in":
+            return self._get_in_main_indices(yf)
 
         # A 股指数：akshare 代码 -> (yfinance 代码, 显示名称)
         yf_mapping = {
@@ -524,6 +539,29 @@ class YfinanceFetcher(BaseFetcher):
                 return results
         except Exception as e:
             logger.error(f"[Yfinance] 获取台湾指数行情失败: {e}")
+        return None
+
+    def _get_in_main_indices(self, yf) -> Optional[List[Dict[str, Any]]]:
+        """获取印度主要指数行情（Nifty 50 ^NSEI、Sensex ^BSESN），复用 _fetch_yf_ticker_data。"""
+        in_indices = {
+            'NSEI': ('^NSEI', 'Nifty 50'),
+            'BSESN': ('^BSESN', 'SENSEX'),
+        }
+        results = []
+        try:
+            for code, (yf_symbol, name) in in_indices.items():
+                try:
+                    item = self._fetch_yf_ticker_data(yf, yf_symbol, name, code)
+                    if item:
+                        results.append(item)
+                        logger.debug(f"[Yfinance] 获取印度指数 {name} 成功")
+                except Exception as e:
+                    logger.warning(f"[Yfinance] 获取印度指数 {name} 失败: {e}")
+            if results:
+                logger.info(f"[Yfinance] 成功获取 {len(results)} 个印度指数行情")
+                return results
+        except Exception as e:
+            logger.error(f"[Yfinance] 获取印度指数行情失败: {e}")
         return None
 
     def _is_us_stock(self, stock_code: str) -> bool:
@@ -815,14 +853,15 @@ class YfinanceFetcher(BaseFetcher):
                 index_name=index_name,
             )
 
-        # 仅处理美股、港股或 JP/KR/TW suffix-only 股票
+        # 仅处理美股、港股或 JP/KR/TW/IN suffix-only 股票
         if not (
             self._is_us_stock(stock_code)
             or _is_hk_market(stock_code)
             or self._is_jp_kr_suffix_stock(stock_code)
             or self._is_tw_suffix_stock(stock_code)
+            or self._is_in_suffix_stock(stock_code)
         ):
-            logger.debug(f"[Yfinance] {stock_code} 不是支持的美股、港股或日韩台代码，跳过")
+            logger.debug(f"[Yfinance] {stock_code} 不是支持的美股、港股或日韩台/印度代码，跳过")
             return None
 
         try:
